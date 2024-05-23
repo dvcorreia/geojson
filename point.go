@@ -5,6 +5,7 @@ import (
 
 	"github.com/tidwall/geojson/geometry"
 	"github.com/tidwall/gjson"
+	"github.com/tidwall/pretty"
 )
 
 type Point struct {
@@ -129,6 +130,56 @@ func (g *Point) Z() float64 {
 	return 0
 }
 
+func (g *Point) UnmarshalJSON(data []byte) error {
+	opts := DefaultParseOptions
+	sdata := string(data)
+
+	if !gjson.Valid(sdata) {
+		return errDataInvalid
+	}
+	var keys parseKeys
+	var fmembers []byte
+	var rType gjson.Result
+	gjson.Parse(sdata).ForEach(func(key, val gjson.Result) bool {
+		switch key.String() {
+		case "type":
+			rType = val
+		case "coordinates":
+			keys.rCoordinates = val
+		default:
+			if len(fmembers) == 0 {
+				fmembers = append(fmembers, '{')
+			} else {
+				fmembers = append(fmembers, ',')
+			}
+			fmembers = append(fmembers, pretty.UglyInPlace([]byte(key.Raw))...)
+			fmembers = append(fmembers, ':')
+			fmembers = append(fmembers, pretty.UglyInPlace([]byte(val.Raw))...)
+		}
+		return true
+	})
+	if len(fmembers) > 0 {
+		fmembers = append(fmembers, '}')
+		keys.members = string(fmembers)
+	}
+	if !rType.Exists() {
+		return errTypeMissing
+	}
+	if rType.Type != gjson.String && rType.String() != "Point" {
+		return errTypeInvalid
+	}
+
+	o, err := parseJSONPoint(&keys, opts)
+	if err != nil {
+		return err
+	}
+
+	p, _ := o.(*Point)
+	*g = *p
+
+	return nil
+}
+
 func parseJSONPoint(keys *parseKeys, opts *ParseOptions) (Object, error) {
 	var o Object
 	base, extra, err := parseJSONPointCoords(keys, gjson.Result{}, opts)
@@ -157,7 +208,7 @@ func parseJSONPoint(keys *parseKeys, opts *ParseOptions) (Object, error) {
 }
 
 func parseJSONPointCoords(
-	keys *parseKeys, rcoords gjson.Result, opts *ParseOptions,
+	keys *parseKeys, rcoords gjson.Result, _ *ParseOptions,
 ) (geometry.Point, *extra, error) {
 	var coords geometry.Point
 	var ex *extra

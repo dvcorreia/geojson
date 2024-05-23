@@ -3,6 +3,7 @@ package geojson
 import (
 	"github.com/tidwall/geojson/geometry"
 	"github.com/tidwall/gjson"
+	"github.com/tidwall/pretty"
 )
 
 type Polygon struct {
@@ -128,6 +129,56 @@ func (g *Polygon) NumPoints() int {
 	return n
 }
 
+func (g *Polygon) UnmarshalJSON(data []byte) error {
+	opts := DefaultParseOptions
+	sdata := string(data)
+
+	if !gjson.Valid(sdata) {
+		return errDataInvalid
+	}
+	var keys parseKeys
+	var fmembers []byte
+	var rType gjson.Result
+	gjson.Parse(sdata).ForEach(func(key, val gjson.Result) bool {
+		switch key.String() {
+		case "type":
+			rType = val
+		case "coordinates":
+			keys.rCoordinates = val
+		default:
+			if len(fmembers) == 0 {
+				fmembers = append(fmembers, '{')
+			} else {
+				fmembers = append(fmembers, ',')
+			}
+			fmembers = append(fmembers, pretty.UglyInPlace([]byte(key.Raw))...)
+			fmembers = append(fmembers, ':')
+			fmembers = append(fmembers, pretty.UglyInPlace([]byte(val.Raw))...)
+		}
+		return true
+	})
+	if len(fmembers) > 0 {
+		fmembers = append(fmembers, '}')
+		keys.members = string(fmembers)
+	}
+	if !rType.Exists() {
+		return errTypeMissing
+	}
+	if rType.Type != gjson.String && rType.String() != "Polygon" {
+		return errTypeInvalid
+	}
+
+	o, err := parseJSONPolygon(&keys, opts)
+	if err != nil {
+		return err
+	}
+
+	p, _ := o.(*Polygon)
+	*g = *p
+
+	return nil
+}
+
 func parseJSONPolygon(keys *parseKeys, opts *ParseOptions) (Object, error) {
 	var o Object
 	coords, extra, err := parseJSONPolygonCoords(keys, gjson.Result{}, opts)
@@ -182,7 +233,7 @@ func parseJSONPolygon(keys *parseKeys, opts *ParseOptions) (Object, error) {
 }
 
 func parseJSONPolygonCoords(
-	keys *parseKeys, rcoords gjson.Result, opts *ParseOptions,
+	keys *parseKeys, rcoords gjson.Result, _ *ParseOptions,
 ) (
 	[][]geometry.Point, *extra, error,
 ) {

@@ -1,7 +1,9 @@
 package geojson
 
 import (
+	"encoding/json"
 	"math/rand"
+	"reflect"
 	"testing"
 
 	"github.com/tidwall/geojson/geometry"
@@ -23,6 +25,17 @@ func TestPointParseValid(t *testing.T) {
 	json := `{"type":"Point","coordinates":[190,90]}`
 	expectJSON(t, json, nil)
 	expectJSONOpts(t, json, errCoordinatesInvalid, &ParseOptions{RequireValid: true})
+}
+
+func TestPointUnmarshal(t *testing.T) {
+	expectUnmarshalPoint(t, `{"type":"Point","coordinates":[1,"hello"]}`, nil, errCoordinatesInvalid)
+	expectUnmarshalPoint(t, `{"type":"Point","coordinates":[1,2],"bbox":null}`, &Point{base: geometry.Point{X: 1, Y: 2}, extra: &extra{members: `{"bbox":null}`}}, nil)
+	expectUnmarshalPoint(t, `{"type":"Point"}`, nil, errCoordinatesMissing)
+	expectUnmarshalPoint(t, `{"type":"Point","coordinates":null}`, nil, errCoordinatesInvalid)
+	expectUnmarshalPoint(t, `{"type":"Point","coordinates":[1,2,3,4,5]}`, &Point{base: geometry.Point{X: 1, Y: 2}, extra: &extra{dims: 2, values: []float64{3, 4}}}, nil)
+	expectUnmarshalPoint(t, `{"type":"Point","coordinates":[1,2,3,4,5]}`, &Point{base: geometry.Point{X: 1, Y: 2}, extra: &extra{dims: 2, values: []float64{3, 4}}}, nil)
+	expectUnmarshalPoint(t, `{"type":"Point","coordinates":[1]}`, nil, errCoordinatesInvalid)
+	expectUnmarshalPoint(t, `{"type":"Point","coordinates":[1,2,3],"bbox":[1,2,3,4]}`, &Point{base: geometry.Point{X: 1, Y: 2}, extra: &extra{dims: 1, values: []float64{3}, members: `{"bbox":[1,2,3,4]}`}}, nil)
 }
 
 func TestPointVarious(t *testing.T) {
@@ -72,5 +85,21 @@ func BenchmarkPointValid(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		points[i].Valid()
+	}
+}
+
+func expectUnmarshalPoint(t *testing.T, input string, expected *Point, exerr error) {
+	var p Point
+	err := json.Unmarshal([]byte(input), &p)
+	if err != exerr {
+		t.Fatalf("expected error '%v', got '%v'", exerr, err)
+	}
+
+	if exerr != nil {
+		return
+	}
+
+	if !reflect.DeepEqual(expected, &p) {
+		t.Fatalf("expected '%#v', got '%#v'", expected, &p)
 	}
 }

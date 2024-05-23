@@ -3,6 +3,7 @@ package geojson
 import (
 	"github.com/tidwall/geojson/geometry"
 	"github.com/tidwall/gjson"
+	"github.com/tidwall/pretty"
 )
 
 type LineString struct {
@@ -112,6 +113,56 @@ func (g *LineString) NumPoints() int {
 	return g.base.NumPoints()
 }
 
+func (g *LineString) UnmarshalJSON(data []byte) error {
+	opts := DefaultParseOptions
+	sdata := string(data)
+
+	if !gjson.Valid(sdata) {
+		return errDataInvalid
+	}
+	var keys parseKeys
+	var fmembers []byte
+	var rType gjson.Result
+	gjson.Parse(sdata).ForEach(func(key, val gjson.Result) bool {
+		switch key.String() {
+		case "type":
+			rType = val
+		case "coordinates":
+			keys.rCoordinates = val
+		default:
+			if len(fmembers) == 0 {
+				fmembers = append(fmembers, '{')
+			} else {
+				fmembers = append(fmembers, ',')
+			}
+			fmembers = append(fmembers, pretty.UglyInPlace([]byte(key.Raw))...)
+			fmembers = append(fmembers, ':')
+			fmembers = append(fmembers, pretty.UglyInPlace([]byte(val.Raw))...)
+		}
+		return true
+	})
+	if len(fmembers) > 0 {
+		fmembers = append(fmembers, '}')
+		keys.members = string(fmembers)
+	}
+	if !rType.Exists() {
+		return errTypeMissing
+	}
+	if rType.Type != gjson.String && rType.String() != "LineString" {
+		return errTypeInvalid
+	}
+
+	o, err := parseJSONLineString(&keys, opts)
+	if err != nil {
+		return err
+	}
+
+	ls, _ := o.(*LineString)
+	*g = *ls
+
+	return nil
+}
+
 func parseJSONLineString(keys *parseKeys, opts *ParseOptions) (Object, error) {
 	var g LineString
 	points, ex, err := parseJSONLineStringCoords(keys, gjson.Result{}, opts)
@@ -139,7 +190,7 @@ func parseJSONLineString(keys *parseKeys, opts *ParseOptions) (Object, error) {
 }
 
 func parseJSONLineStringCoords(
-	keys *parseKeys, rcoords gjson.Result, opts *ParseOptions,
+	keys *parseKeys, rcoords gjson.Result, _ *ParseOptions,
 ) ([]geometry.Point, *extra, error) {
 	var err error
 	var coords []geometry.Point

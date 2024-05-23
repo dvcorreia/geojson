@@ -231,7 +231,7 @@ func parseJSON(data string, opts *ParseOptions) (Object, error) {
 	}
 }
 
-func parseBBoxAndExtras(ex **extra, keys *parseKeys, opts *ParseOptions) error {
+func parseBBoxAndExtras(ex **extra, keys *parseKeys, _ *ParseOptions) error {
 	if keys.members == "" {
 		return nil
 	}

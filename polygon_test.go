@@ -1,7 +1,11 @@
 package geojson
 
 import (
+	"encoding/json"
+	"reflect"
 	"testing"
+
+	"github.com/tidwall/geojson/geometry"
 )
 
 func TestPolygonParse(t *testing.T) {
@@ -39,6 +43,34 @@ func TestPolygonParseValid(t *testing.T) {
 	expectJSONOpts(t, json, errCoordinatesInvalid, &ParseOptions{RequireValid: true})
 }
 
+func TestPolygonUnmarshal(t *testing.T) {
+	expectUnmarshalPolygon(t, `{"type":"Polygon","coordinates":[[1,null]]}`, nil, errCoordinatesInvalid)
+	expectUnmarshalPolygon(t, `{"type":"Polygon","coordinates":[]}`, nil, errCoordinatesInvalid)
+	expectUnmarshalPolygon(t, `{"type":"Polygon","coordinates":[[[0,0],[10,0],[5,10],[0,0]],[[1,1]]]}`, nil, errCoordinatesInvalid)
+	expectUnmarshalPolygon(t, `{"type":"Polygon","coordinates":[[[0,0],[10,0],[5,10],[0,0]]],"bbox":null}`, &Polygon{base: *geometry.NewPoly([]geometry.Point{
+		{X: 0, Y: 0},
+		{X: 10, Y: 0},
+		{X: 5, Y: 10},
+		{X: 0, Y: 0},
+	}, nil, nil), extra: &extra{members: `{"bbox":null}`}}, nil)
+	expectUnmarshalPolygon(t, `{"type":"Polygon"}`, nil, errCoordinatesMissing)
+	expectUnmarshalPolygon(t, `{"type":"Polygon","coordinates":null}`, nil, errCoordinatesInvalid)
+	expectUnmarshalPolygon(t, `{"type":"Polygon","coordinates":[null]}`, nil, errCoordinatesInvalid)
+	expectUnmarshalPolygon(t, `{"type":"Polygon","coordinates":[[null]]}`, nil, errCoordinatesInvalid)
+	expectUnmarshalPolygon(t, `{"type":"Polygon","coordinates":[[[0,0,0,0,0],[10,0],[5,10],[0,0]]]}`, &Polygon{base: *geometry.NewPoly([]geometry.Point{
+		{X: 0, Y: 0},  // [0,0,0,0]
+		{X: 10, Y: 0}, // [10,0,0,0]
+		{X: 5, Y: 10}, // [5,10,0,0]
+		{X: 0, Y: 0},  // [0,0,0,0]
+	}, nil, nil), extra: &extra{dims: 2, values: []float64{0, 0, 0, 0, 0, 0, 0, 0}}}, nil)
+	expectUnmarshalPolygon(t, `{"type":"Polygon","coordinates":[[[0,0,0],[10,0,4,5],[5,10],[0,0]]]}`, &Polygon{base: *geometry.NewPoly([]geometry.Point{
+		{X: 0, Y: 0},  // [0,0,0]
+		{X: 10, Y: 0}, // [10,0,4]
+		{X: 5, Y: 10}, // [5,10,0]
+		{X: 0, Y: 0},  // [0,0,0]
+	}, nil, nil), extra: &extra{dims: 1, values: []float64{0, 4, 0, 0}}}, nil)
+}
+
 func TestPolygonVarious(t *testing.T) {
 	var g = expectJSON(t, `{"type":"Polygon","coordinates":[[[0,0],[10,0],[10,10],[0,10],[0,0]]]}`, nil)
 	expect(t, string(g.AppendJSON(nil)) == `{"type":"Polygon","coordinates":[[[0,0],[10,0],[10,10],[0,10],[0,0]]]}`)
@@ -74,6 +106,22 @@ func TestPolygonVarious(t *testing.T) {
 func TestEmptyPolygon(t *testing.T) {
 	p := NewPolygon(nil)
 	expect(t, p.JSON() == `{"type":"Polygon","coordinates":[]}`)
+}
+
+func expectUnmarshalPolygon(t *testing.T, input string, expected *Polygon, exerr error) {
+	var p Polygon
+	err := json.Unmarshal([]byte(input), &p)
+	if err != exerr {
+		t.Fatalf("expected error '%v', got '%v'", exerr, err)
+	}
+
+	if exerr != nil {
+		return
+	}
+
+	if !reflect.DeepEqual(expected, &p) {
+		t.Fatalf("expected '%#v', got '%#v'", expected, &p)
+	}
 }
 
 // https://github.com/tidwall/tile38/issues/664

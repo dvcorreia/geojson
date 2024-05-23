@@ -1,6 +1,12 @@
 package geojson
 
-import "testing"
+import (
+	"encoding/json"
+	"reflect"
+	"testing"
+
+	"github.com/tidwall/geojson/geometry"
+)
 
 func TestMultiPolygon(t *testing.T) {
 	json := `{"type":"MultiPolygon","coordinates":[
@@ -38,6 +44,54 @@ func TestMultiPolygonParseValid(t *testing.T) {
 	expectJSONOpts(t, json, nil, &ParseOptions{RequireValid: true})
 }
 
+func TestMultiPolygonUnmarshal(t *testing.T) {
+	json := `{"type":"MultiPolygon","coordinates":[
+		[
+			[[0,0],[10,0],[10,10],[0,10],[0,0]],
+			[[2,2],[8,2],[8,8],[2,8],[2,2]]
+		],[
+			[[0,0],[10,0],[10,10],[0,10],[0,0]],
+			[[2,2],[8,2],[8,8],[2,8],[2,2]]
+		]
+	]}`
+	tc := &MultiPolygon{collection: collection{
+		children: []Object{
+			&Polygon{base: *geometry.NewPoly([]geometry.Point{
+				{X: 0, Y: 0},
+				{X: 10, Y: 0},
+				{X: 10, Y: 10},
+				{X: 0, Y: 10},
+				{X: 0, Y: 0},
+			}, [][]geometry.Point{{
+				{X: 2, Y: 2},
+				{X: 8, Y: 2},
+				{X: 8, Y: 8},
+				{X: 2, Y: 8},
+				{X: 2, Y: 2},
+			}}, nil)},
+			&Polygon{base: *geometry.NewPoly([]geometry.Point{
+				{X: 0, Y: 0},
+				{X: 10, Y: 0},
+				{X: 10, Y: 10},
+				{X: 0, Y: 10},
+				{X: 0, Y: 0},
+			}, [][]geometry.Point{{
+				{X: 2, Y: 2},
+				{X: 8, Y: 2},
+				{X: 8, Y: 8},
+				{X: 2, Y: 8},
+				{X: 2, Y: 2},
+			}}, nil)},
+		},
+	}}
+	tc.parseInitRectIndex(DefaultParseOptions)
+	expectUnmarshalMultiPolygon(t, json, tc, nil)
+	expectUnmarshalMultiPolygon(t, `{"type":"MultiPolygon","coordinates":[[[[0,0],[10,0],[5,10],[0,0]],[[1,1]]]],"bbox":null}`, nil, errCoordinatesInvalid)
+	expectUnmarshalMultiPolygon(t, `{"type":"MultiPolygon"}`, nil, errCoordinatesMissing)
+	expectUnmarshalMultiPolygon(t, `{"type":"MultiPolygon","coordinates":null}`, nil, errCoordinatesInvalid)
+	expectUnmarshalMultiPolygon(t, `{"type":"MultiPolygon","coordinates":[1,null]}`, nil, errCoordinatesInvalid)
+}
+
 func TestMultiPolygonPoly(t *testing.T) {
 	p := expectJSON(t, `{"type":"MultiPolygon","coordinates":[
 		[
@@ -51,6 +105,22 @@ func TestMultiPolygonPoly(t *testing.T) {
 	expect(t, p.Contains(PO(150, 150)))
 	expect(t, !p.Contains(PO(40, 40)))
 	expect(t, p.Within(RO(-100, -100, 1000, 1000)))
+}
+
+func expectUnmarshalMultiPolygon(t *testing.T, input string, expected *MultiPolygon, exerr error) {
+	var mp MultiPolygon
+	err := json.Unmarshal([]byte(input), &mp)
+	if err != exerr {
+		t.Fatalf("expected error '%v', got '%v'", exerr, err)
+	}
+
+	if exerr != nil {
+		return
+	}
+
+	if !reflect.DeepEqual(expected, &mp) {
+		t.Fatalf("expected '%#v', got '%#v'", expected, &mp)
+	}
 }
 
 // https://github.com/tidwall/tile38/issues/369

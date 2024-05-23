@@ -1,6 +1,12 @@
 package geojson
 
-import "testing"
+import (
+	"encoding/json"
+	"reflect"
+	"testing"
+
+	"github.com/tidwall/geojson/geometry"
+)
 
 func TestLineStringParse(t *testing.T) {
 	expectJSON(t, `{"type":"LineString","coordinates":[[1,2,3]]}`, errCoordinatesInvalid)
@@ -22,6 +28,26 @@ func TestLineStringParseValid(t *testing.T) {
 	json := `{"type":"LineString","coordinates":[[1,2],[-12,-190]]}`
 	expectJSON(t, json, nil)
 	expectJSONOpts(t, json, errDataInvalid, &ParseOptions{RequireValid: true})
+}
+
+func TestLineStringUnmarshal(t *testing.T) {
+	expectUnmarshalLineString(t, `{"type":"LineString","coordinates":[[1,2,3]]}`, nil, errCoordinatesInvalid)
+	expectUnmarshalLineString(t, `{"type":"LineString","coordinates":[[1,null]]}`, nil, errCoordinatesInvalid)
+	expectUnmarshalLineString(t, `{"type":"LineString","coordinates":[[1,2]],"bbox":null}`, nil, errCoordinatesInvalid)
+	expectUnmarshalLineString(t, `{"type":"LineString"}`, nil, errCoordinatesMissing)
+	expectUnmarshalLineString(t, `{"type":"LineString","coordinates":null}`, nil, errCoordinatesInvalid)
+	expectUnmarshalLineString(t, `{"type":"LineString","coordinates":[[null]]}`, nil, errCoordinatesInvalid)
+	expectUnmarshalLineString(t, `{"type":"LineString","coordinates":[null]}`, nil, errCoordinatesInvalid)
+	expectUnmarshalLineString(t, `{"type":"LineString","coordinates":[[1,2,3,4,5]]}`, nil, errCoordinatesInvalid)
+	expectUnmarshalLineString(t, `{"type":"LineString","coordinates":[[1]]}`, nil, errCoordinatesInvalid)
+	expectUnmarshalLineString(t, `{"type":"LineString","coordinates":[[3,4],[1,2]]}`, &LineString{base: *geometry.NewLine([]geometry.Point{
+		{X: 3, Y: 4},
+		{X: 1, Y: 2},
+	}, nil)}, nil)
+	expectUnmarshalLineString(t, `{"type":"LineString","coordinates":[[3,4],[1,2]],"bbox":[1,2,3,4]}`, &LineString{base: *geometry.NewLine([]geometry.Point{
+		{X: 3, Y: 4},
+		{X: 1, Y: 2},
+	}, nil), extra: &extra{members: `{"bbox":[1,2,3,4]}`}}, nil)
 }
 
 func TestLineStringVarious(t *testing.T) {
@@ -72,3 +98,19 @@ func TestLineStringInvalid(t *testing.T) {
 // 	expect(t, lsb.Contains(PO(12, 13)))
 // 	expect(t, ls.Contains(PO(20, 20)))
 // }
+
+func expectUnmarshalLineString(t *testing.T, input string, expected *LineString, exerr error) {
+	var ls LineString
+	err := json.Unmarshal([]byte(input), &ls)
+	if err != exerr {
+		t.Fatalf("expected error '%v', got '%v'", exerr, err)
+	}
+
+	if exerr != nil {
+		return
+	}
+
+	if !reflect.DeepEqual(expected, &ls) {
+		t.Fatalf("expected '%#v', got '%#v'", expected, &ls)
+	}
+}
